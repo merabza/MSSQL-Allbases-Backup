@@ -27,13 +27,11 @@ if [ "$ext" = ".bak" ]; then
   #.bak extension means full backup
   #get all databases names, but not tempdb
   query="SELECT name FROM master.dbo.sysdatabases WHERE name NOT IN ('tempdb')"
-  #mapfile -t Bases <<(sqlcmd -U sa -P $sapwd -Q "SELECT name FROM master.dbo.sysdatabases WHERE name NOT IN ('tempdb')")
 else
   if [ "$ext" = ".trn" ]; then
     #.trn extension means transaction logs backup
     #get all databases names, wich recovery model is FULL
     query="SELECT name FROM sys.databases WHERE recovery_model_desc = 'FULL'"
-    #BasesOutput="$(sqlcmd -U sa -P $sapwd -Q "SELECT name FROM sys.databases WHERE recovery_model_desc = 'FULL'")"
     fullBackup=false
   else
     echo supported only .bak and .trn extension
@@ -45,7 +43,7 @@ fi
 Bases=(`eval $sqlc '"$query"'`)
 
 #array length is ${#Bases[@]}
-#take less 4 bacause not use first 2 and last 2 lines
+#take less 5 bacause not use first 2 and last 3 lines
 bl="${#Bases[@]}"-5
 
 for element in "${Bases[@]:2:bl}"
@@ -60,22 +58,29 @@ do
   #create backup query  
   if $fullBackup; then
     backupName="${databaseName}-full"
+    #with compression
     query="BACKUP DATABASE [$databaseName] TO DISK=N'$filename' WITH NOFORMAT, NOINIT, NAME = N'$backupName', SKIP, REWIND, NOUNLOAD, COMPRESSION, STATS = 10"
   else
     query="BACKUP LOG [$databaseName] TO DISK=N'$filename' WITH NOFORMAT, NOINIT, NAME = N'$databaseName', SKIP, REWIND, NOUNLOAD, STATS = 10"
   fi
 
+  #run SQL command
   eval $sqlc '"$query"'
+  #get return value
   ret_code=$?
 
+  #if everything is ok
   if [ $ret_code == 0 ]; then
 
+    #check last created backup
     query="declare @backupSetId as int select @backupSetId = position from msdb..backupset where database_name=N'$element' and backup_set_id=(select max(backup_set_id) from msdb..backupset where database_name=N'$element' ) if @backupSetId is null begin raiserror(N'Verify failed. Backup information for database ''$element'' not found.', 16, 1) end RESTORE VERIFYONLY FROM DISK = N'$filename' WITH  FILE = @backupSetId,  NOUNLOAD,  NOREWIND"
 
     eval $sqlc '"$query"'
     ret_code=$?
   
+    #if everything is ok
     if [ $ret_code == 0 ]; then
+      #find and delete 4 dayes older files
       find $path -depth -type f -name '$path$element$backup*$ext' -mtime +4 -delete
       #instead of -print must be -delete for delete found files
       #instead of -delete must be -print for just print files for delete
