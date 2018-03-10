@@ -1,5 +1,8 @@
 #!/bin/bash
 
+DATE=`date '+%Y_%m_%d_%H%M%S_%N'`
+echo $DATE
+
 sapwd=$1
 path=$2
 ext=$3
@@ -18,7 +21,8 @@ fi
 fullBackup=true
 
 #command for sql server
-sqlc='sqlcmd -U sa -P $sapwd -Q'
+#Important: if you use this script in crontab, use sqlcmd with path. 
+sqlc='/opt/mssql-tools/bin/sqlcmd -U sa -P $sapwd -Q'
 
 
 
@@ -31,7 +35,7 @@ else
   if [ "$ext" = ".trn" ]; then
     #.trn extension means transaction logs backup
     #get all databases names, wich recovery model is FULL
-    query="SELECT name FROM sys.databases WHERE recovery_model_desc = 'FULL'"
+    query="SELECT name FROM sys.databases WHERE DATABASEPROPERTYEX(name, 'RECOVERY') = 'FULL'"
     fullBackup=false
   else
     echo supported only .bak and .trn extension
@@ -39,12 +43,19 @@ else
   fi
 fi
 
+echo try get database names
 #put sql uptput to array
 Bases=(`eval $sqlc '"$query"'`)
 
 #array length is ${#Bases[@]}
+
 #take less 5 bacause not use first 2 and last 3 lines
-bl="${#Bases[@]}"-5
+
+declare -i bl
+bl=${#Bases[@]}
+bl=bl-5
+
+echo "count off databases for backup is $bl"
 
 for element in "${Bases[@]:2:bl}"
 do
@@ -52,15 +63,18 @@ do
   DATE=`date '+%Y_%m_%d_%H%M%S_%N'`
   #get database name from current array element wth truncate white spaces
   databaseName=$(echo $element | tr -d ' ')
+
   #create file name for backup
   filename="$path$element$backup$DATE$ext"
   
   #create backup query  
   if $fullBackup; then
+    echo "Backup Database $databaseName"
     backupName="${databaseName}-full"
     #with compression
     query="BACKUP DATABASE [$databaseName] TO DISK=N'$filename' WITH NOFORMAT, NOINIT, NAME = N'$backupName', SKIP, REWIND, NOUNLOAD, COMPRESSION, STATS = 10"
   else
+    echo "Backup Database transaction logs $databaseName"
     query="BACKUP LOG [$databaseName] TO DISK=N'$filename' WITH NOFORMAT, NOINIT, NAME = N'$databaseName', SKIP, REWIND, NOUNLOAD, STATS = 10"
   fi
 
