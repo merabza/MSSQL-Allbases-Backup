@@ -95,7 +95,9 @@ do
     #if everything is ok
     if [ $ret_code == 0 ]; then
       #find and delete 4 dayes older files
-      find $path -depth -type f -name '$path$element$backup*$ext' -mtime +4 -delete
+      echo Delete this files
+      find $path -depth -type f -name '$element$backup*$ext' -mtime +4 -print
+      find $path -depth -type f -name '$element$backup*$ext' -mtime +4 -delete
       #instead of -print must be -delete for delete found files
       #instead of -delete must be -print for just print files for delete
     fi
